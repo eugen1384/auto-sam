@@ -10,8 +10,6 @@
 #define BTN_PIN 7      // КНОПКА
 #define PWM_PIN 6      // ШИМ КУЛЕРОВ
 #define PUMP_PIN 10    // MOSFET ПОМПА
-#define KL1_PIN 8      // КЛАПАН_ГОЛОВЫ
-#define KL2_PIN 10     // КЛАПАН_ТЕЛО
 #define TC_PIN 4       // ТЕМПЕРАТУРА КУБ
 #define TW_PIN 5       // ТЕМПЕРАТУРА ВОДА
 #define TUO_PIN 9      // ТЕМПЕРАТУРА УЗЕЛ ОТБОРА
@@ -20,20 +18,8 @@
 #define STOP_M2 96     // ТЕМПЕРАТУРА ОСТАНОВКИ РЕЖИМА 1
 #define FAIL_STOP_C 99 // ТЕМПЕРАТУРА АВАРИЙНОЙ ОСТАНОВКИ(КУБ)
 #define FAIL_STOP_W 45 // ТЕМПЕРАТУРА АВАРИЙНОЙ ОСТАНОВКИ(ВОДА)
-#define P_START_UO 50  // ТЕМПЕРАТУРА ВКЛ ПОМПЫ ПО УЗЛУ ОТБОРА 
 #define P_START_C  70  // ТЕМПЕРАТУРА ВКЛ ПОМПЫ ПО КУБУ
-//ТАЙМЕРЫ КЛАПАНОВ(СКОРОСТЬ ОТБОРА)
-#define KL1_PER 10000  // ПЕРИОД ВКЛЮЧЕНИЯ КЛАПАНА ОТБОРА ГОЛОВ (millis)
-#define KL2_PER 10000  // ПЕРИОД ВКЛЮЧЕНИЯ КЛАПАНА ОТБОРА ТЕЛА (millis)
-#define KL1_OFF 1000   // ВРЕМЯ РАБОТЫ КЛАПАНА ОТБОРА ГОЛОВ (millis)
-#define KL2_OFF 3000   // ВРЕМЯ РАБОТЫ КЛАПАНА ОТБОРА ТЕЛА (millis)
-//СЧЕТЧИКИ ВРЕМЕНИ
-#define TSLF_WRK 900   // ВРЕМЯ РАБОТЫ КОЛОННЫ НА СЕБЯ (sec) ~15 мин
-#define THEAD   5400   // ВРЕМЯ ОТБОРА ГОЛОВ (sec) ~1.5 часа
-//ПАРАМЕТРЫ ТЕМПЕРАТУРЫ И ИНТЕНСИВНОСТИ СНИЖЕНИЯ СКОРОСТИ ОТБОРА
-#define DECR    200    // ДЕКРЕМЕНТ СНИЖЕНИЯ СКОРОСТИ ОТБОРА
-#define DELT    0.3    // ДЕЛЬТА ТЕМПЕРАТУРЫ УЗЛА ОТБОРА
-#define GDELT  0.2     // ГИСТЕРЕЗИС ТЕМПЕРАТУР УЗЛА ОТБОРА. ОТНИМАЕТСЯ ОТ ПОРОГОВОГО ПО ПОВЫШЕНИЮ
+
 //i2C ДИСПЛЕЯ ПОДКЛЮЧЕН НА A4(SDA), A5(SCL). ДИСПЛЕЙ 20x4
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 //ИНИЦИАЛИЗАЦИЯ ДАТЧИКОВ ТЕМПЕРАТУРЫ. MicroDS18B20<PIN> <object_name>;
@@ -45,15 +31,13 @@ MicroDS18B20<TUO_PIN> sensor_out;
 float cube_temp;        // ТЕМП. В КУБЕ (идет на дисплей)
 float water_temp;       // ТЕМП. ВОДЫ В ОХЛАЖДЕНИИ (идет на дисплей)
 float uo_temp;          // ТЕМП. УЗЛА ОТБОРА (идет на дисплей) 
-int mode = 5;           // ГЛАВНЫЙ РЕЖИМ РАБОТЫ. ПО УМОЛЧАНИЮ 4(РУЧНОЙ)
+int mode = 3;           // ГЛАВНЫЙ РЕЖИМ РАБОТЫ. ПО УМОЛЧАНИЮ 3(РУЧНОЙ)
 int pwm_pow;            // ШИМ КУЛЕРОВ (для дисплея)
 int pwm_pow_map;        // ШИМ КУЛЕРОВ ДЛЯ РАСЧЕТОВ
 int ten_pow;            // МОЩНОСТЬ ТЭН (для дисплея)
 int ten_pow_map;        // МОЩНОСТЬ ТЭН ДЛЯ РАСЧЕТОВ
 int dimmer;             // ДИММЕР. ХРАНИТ ВРЕМЯ ВКЛ СИМИСТОРА В мкс ОТ ПРОХОЖДЕНИЯ НУЛЯ СИНУСОИДОЙ
 int rheat;              // ЧТЕНИЕ ЗАДАЮЩЕГО R НАГРЕВА
-int count_self;         // СЧЕТЧИК ВРЕМЕНИ РАБОТЫ "НА СЕБЯ"
-int count_head;         // СЧЕТЧИК ДЛЯ ВРЕМЕНИ ОТБОРА ГОЛОВ
 bool star;              //ФЛАГ ИНДИКАТОРА РАБОТЫ
 String pump_state;      // ON/OFF ДЛЯ ДИСПЛЕЯ
 String mode_desc;       // ОПИСАНИЕ РЕЖИМА ДЛЯ ДИСПЛЕЯ
@@ -98,9 +82,6 @@ pinMode(R_COOL, INPUT);
 pinMode(BTN_PIN, INPUT_PULLUP);
 pinMode(PWM_PIN, OUTPUT);
 pinMode(PUMP_PIN, OUTPUT);
-pinMode(KL1_PIN, OUTPUT);
-pinMode(KL2_PIN, OUTPUT);
-
 // КОНЕЦ setup()
 }
 
@@ -141,16 +122,14 @@ if (millis() - tmr_mode >= 550) {
     tmr_mode = millis();  
 if (!digitalRead(BTN_PIN)) {
 mode = mode + 1;
-if (mode > 5) {        //ТУТ ЗАДАЕМ МАКСИМАЛЬНОЕ ЧИСЛО РЕЖИМОВ
+if (mode > 3) {        //ТУТ ЗАДАЕМ МАКСИМАЛЬНОЕ ЧИСЛО РЕЖИМОВ
   mode = 1;
   }
  }
 // ЗАДАЕМ ОПИСАНИЕ РЕЖИМОВ ДЛЯ ОТОБРАЖЕНИЯ НА ДИСПЛЕЕ
 if (mode == 1) mode_desc = "POTSTILL1";
 if (mode == 2) mode_desc = "POTSTILL2";
-if (mode == 3) mode_desc = "RECTIFIC1";
-if (mode == 4) mode_desc = "RECTIFIC2";
-if (mode == 5) mode_desc = "MANUAL   ";
+if (mode == 3) mode_desc = "MANUAL   ";
 // КОНЕЦ ОПРОСА КНОПКИ И ВЫБОРА РЕЖИМА
 }
 
@@ -181,17 +160,8 @@ if (mode == 2 && cube_temp >= 75) {
     dimmer = map(cube_temp, 75, 96, 5000, 3500); // МЕНЯЕТСЯ ОТ 50% ДО 65%
     ten_pow = map(dimmer, 9000, 500, 0, 100);
  }
-// РЕЖИМЫ РЕКТИФИКАЦИИ. ПО ТЕМПЕРАТУРЕ В УЗЛЕ ОТБОРА
-if ((mode == 3 || mode == 4) && uo_temp < 72) {
-  detachInterrupt(INT_NUM);
-  ten_pow = 100;
-  digitalWrite(DIMMER_PIN, 1);
-}
-if ((mode == 3 || mode == 4) && uo_temp >= 72) {
-    attachInterrupt(INT_NUM, isr, FALLING);
-    dimmer =  map(cube_temp, 72, 98, 4200, 3200); // МЕНЯЕТСЯ (примерно) ОТ 60% ДО 70%
-}
-if (mode == 5){
+// РУЧНОЙ
+if (mode == 3){
   rheat = analogRead(R_HEAT);
 if (rheat < 1000 && rheat >= 100) {
   attachInterrupt(INT_NUM, isr, FALLING);
@@ -212,30 +182,12 @@ if (rheat < 100) {
 // КОНЕЦ УПРАВЛЕНИЯ МОЩНОСТЬЮ ТЭНа
 } 
 
-//#########################################
-// ОСНОВНАЯ ЛОГИКА РАБОТЫ РЕКТИФИКАЦИИ №1
-
-
-//#########################################
-// ОСНОВНАЯ ЛОГИКА РАБОТЫ РЕКТИФИКАЦИИ №2 (АВАРИЙНАЯ ЧТОБЫ ДОГНАТЬ ПОСЛЕ ОТКЛЮЧЕНИЯ БЕЗ ОТБОРА ГОЛОВ)
-
-
 //#################################################
-// УПРАВЛЕНИЕ ПОМПОЙ НА РАЗНЫХ РЕЖИМАХ (АСИНХРОННО)
+// УПРАВЛЕНИЕ ПОМПОЙ (АСИНХРОННО)
 static uint32_t tmr_pump;
 if (millis() - tmr_pump >= 452) {
     tmr_pump = millis();
-// POTSTILLs & MANUAL
-if ((mode == 1 || mode == 2 || mode == 5) && cube_temp >= P_START_C) {
-  digitalWrite(PUMP_PIN, 1);
-  pump_state = " ON"; 
- }
-else {
-  digitalWrite(PUMP_PIN, 0);
-  pump_state = "OFF";
- }
-// RECTIFICATION
-if ((mode == 3 || mode == 4) && uo_temp >= P_START_UO) {
+if (cube_temp >= P_START_C) {
   digitalWrite(PUMP_PIN, 1);
   pump_state = " ON"; 
  }
@@ -251,15 +203,15 @@ else {
 static uint32_t tmr_air;
 if (millis() - tmr_air >= 321) {
     tmr_air = millis();
-if (mode != 5 && water_temp > 1) {
+if (mode != 3 && water_temp >= 10) {
   pwm_pow_map = map(water_temp, 10, 45, 0, 255);
   analogWrite(PWM_PIN, pwm_pow_map);
   pwm_pow = map(pwm_pow_map, 0, 255, 0, 100);  
  }
-else {
-  pwm_pow = 0;  
+if (mode !=3 && water_temp < 10) {
+  pwm_pow = 0;
  }
-if (mode == 5) {
+if (mode == 3) {
   pwm_pow_map = map(analogRead(R_COOL), 0, 1024, 0, 255);
   analogWrite(PWM_PIN, pwm_pow_map);
   pwm_pow = map(pwm_pow_map, 0, 255, 0, 100);
@@ -380,8 +332,6 @@ while (true) {
     digitalWrite(DIMMER_PIN, 0); // выключаем тиристор принудительно
     digitalWrite(PUMP_PIN, 0);   // выключаем помпу
     analogWrite(PWM_PIN, 0);     // выставляем минимум на кулеры
-    digitalWrite(KL1_PIN, 0);    // закрываем клапан 1
-    digitalWrite(KL2_PIN, 0);    // закрываем клапан 2
     delay(1000);                 // повторяем бесконечно, раз в секунду
   }
 }
@@ -395,8 +345,6 @@ while (true) {
     digitalWrite(DIMMER_PIN, 0);  //отцепляем прерывание
     digitalWrite(PUMP_PIN, 0);    //выключаем помпу
     analogWrite(PWM_PIN, 0);      //выставляем минимум на кулеры
-    digitalWrite(KL1_PIN, 0);     //закрываем клапан 1
-    digitalWrite(KL2_PIN, 0);     //закрываем клапан 2
     delay(1000);                  //повторяем бесконечно, раз в секунду
   }
 }
@@ -410,33 +358,7 @@ while (true) {
     digitalWrite(DIMMER_PIN, 0);  //отцепляем прерывание
     digitalWrite(PUMP_PIN, 0);    //выключаем помпу
     analogWrite(PWM_PIN, 0);      //выставляем минимум на кулеры
-    digitalWrite(KL1_PIN, 0);     //закрываем клапан 1
-    digitalWrite(KL2_PIN, 0);     //закрываем клапан 2
     delay(1000);                  //повторяем бесконечно, раз в секунду
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// THE END
