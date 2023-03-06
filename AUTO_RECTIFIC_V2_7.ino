@@ -208,7 +208,7 @@ if ((mode == 3 || mode == 4) && uo_temp >= TUO_REF) {
     dimmer =  map(cube_temp, 80, 98, MIN_POW, MAX_POW); // МЕНЯЕТСЯ (примерно) ОТ 55% ДО 65%
     ten_pow = map(dimmer, 9000, 500, 0, 100);    
 }
-if (mode == 5){
+if (mode == 4){
   submode = "N";
   rheat = analogRead(R_HEAT);
 if (rheat < 1000 && rheat >= 100) {
