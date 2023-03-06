@@ -186,22 +186,26 @@ if (mode == 1 && cube_temp < 75 ) {
   detachInterrupt(INT_NUM);
   ten_pow = 100;
   digitalWrite(DIMMER_PIN, 1);
+  submode = "R";
  }
 if (mode == 1 && cube_temp >= 75) {
     attachInterrupt(INT_NUM, isr, FALLING);
     dimmer = map(cube_temp, 75, 98, 4000, 2500); // МЕНЯЕТСЯ ОТ 60% до 75%
     ten_pow = map(dimmer, 9000, 500, 0, 100);
+    submode = "P";
  }
 // РЕЖИМ "POTSTILL 2" ВТОРОЙ ПЕРЕГОНКИ (МОЩНОСТЬ НИЖЕ)
 if (mode == 2 && cube_temp < 75 ) {
   detachInterrupt(INT_NUM);
   ten_pow = 100;
   digitalWrite(DIMMER_PIN, 1);
+  submode = "R";
  }
 if (mode == 2 && cube_temp >= 75) {
     attachInterrupt(INT_NUM, isr, FALLING);
     dimmer = map(cube_temp, 75, 96, 5000, 3500); // МЕНЯЕТСЯ ОТ 50% ДО 65%
     ten_pow = map(dimmer, 9000, 500, 0, 100);
+    submode = "P";
  }
 // РЕЖИМЫ РЕКТИФИКАЦИИ. ПО ТЕМПЕРАТУРЕ В УЗЛЕ ОТБОРА
 if ((mode == 3 || mode == 4) && uo_temp < 70) {
@@ -211,10 +215,11 @@ if ((mode == 3 || mode == 4) && uo_temp < 70) {
 }
 if ((mode == 3 || mode == 4) && uo_temp >= 70) {
     attachInterrupt(INT_NUM, isr, FALLING);
-    dimmer =  map(cube_temp, 80, 98, 4200, 3200); // МЕНЯЕТСЯ (примерно) ОТ 60% ДО 70%
+    dimmer =  map(cube_temp, 80, 98, 4000, 3000); // МЕНЯЕТСЯ (примерно) ОТ 60% ДО 70%
     ten_pow = map(dimmer, 9000, 500, 0, 100);    
 }
 if (mode == 5){
+  submode = "N";
   rheat = analogRead(R_HEAT);
 if (rheat < 1000 && rheat >= 100) {
   attachInterrupt(INT_NUM, isr, FALLING);
@@ -235,20 +240,16 @@ if (rheat < 100) {
 // КОНЕЦ УПРАВЛЕНИЯ МОЩНОСТЬЮ ТЭНа
 } 
 
-if (mode == 1 || mode == 2 || mode == 5) {
-    submode = "N"; // N для режимов без подрежимов
-}
-
 //#########################################
 // ОСНОВНАЯ ЛОГИКА РАБОТЫ РЕКТИФИКАЦИИ №1
 // СЧЕТЧИК ВРЕМЕНИ РАБОТЫ "НА СЕБЯ"
 static uint32_t tmr_self;
 if (millis() - tmr_self >= 1000) {
     tmr_self = millis();
-if (mode == 3 && count_self < TSELF && uo_temp <= 72){
+if (mode == 3 && count_self < TSELF && uo_temp < 73){
    submode = "R"; //РАЗГОН
 }
-if (mode == 3 && count_self < TSELF && uo_temp > 72) {
+if (mode == 3 && count_self < TSELF && uo_temp >= 73) {
    count_self = count_self + 1;
    submode = "S"; //РАБОТА НА СЕБЯ
  }
@@ -265,9 +266,8 @@ if (mode != 3) {
 }
 
 //ОТБОР ГОЛОВ. ПОКА СЧЕТКИК НЕ ДОЙДЕТ ДО ЗАДАННОГО ВРЕМЕНИ
-
 if (mode == 3 && uo_temp > 70 && count_self >= TSELF && count_head < head_time) {
-submode = "H";  
+    submode = "H";  
 //наращиваем по таймеру счетчик
 static uint32_t tmr_head;
 if (millis() - tmr_head >= 1000) {
@@ -297,15 +297,16 @@ if (mode == 3 && uo_temp > 70 && count_self >= TSELF && count_head >= head_time 
    kl2_off = KL2_OFF;     // задали переменной значение константы для стартовой скорости отбора. константу перезаписывать нельзя
    tflag = 1; // флаг выставляем в 1, чтобы больше сюда уже не попадать.  
 }
+
 // И дальше работаем уже после фиксации температуры
 if (mode == 3 && uo_temp > 70 && count_self >= TSELF && count_head >= head_time && tflag == 1) {
-submode = "B"; //ОТБОР ТЕЛА
+   submode = "B"; //ОТБОР ТЕЛА
 //РАБОТА КЛАПАНА ОТБОРА ЕСЛИ ТЕМПЕРАТУРА НЕ ПРЕВЫШАЕТ ФИКСИРОВАННУЮ РАНЕЕ НА ЗНАЧЕНИЕ ДЕЛЬТЫ 
 if (uo_temp < uo_temp_fix + DELT) {
+
 static uint32_t tmr_uo_body;
 if (millis() - tmr_uo_body >= KL2_PER) {
     tmr_uo_body = millis();
-    xflag = 0; // обнуляем флаг, до следующего завышения температуры    
     digitalWrite(KL2_PIN, 1); //открыли клапан
     kl2_state = ">>";
  }
@@ -328,52 +329,12 @@ if (kl2_off < 500) {
 // КОНЕЦ РАБОТЫ ПО ОТБОРУ "ТЕЛА"
 }
 
-//#########################################
-// ОСНОВНАЯ ЛОГИКА РАБОТЫ РЕКТИФИКАЦИИ №2 (АВАРИЙНАЯ ЧТОБЫ ДОГНАТЬ ПОСЛЕ ОТКЛЮЧЕНИЯ БЕЗ ОТБОРА ГОЛОВ)
-//тут мы не отбираем тело но даем колонне стабилизироваться
-static uint32_t tmr_self2;
-if (millis() - tmr_self2 >= 1000) {
-    tmr_self2 = millis();
-if (mode == 4 && count_self2 < TSELF && uo_temp > 72) {
-   count_self2 = count_self2 + 1;
-   submode = "S"; //НА СЕБЯ   
- }
-}
 
-//фиксируем температуру на момент окончания отбора голов в перемнной uo_temp_fix
-if (mode == 4 && uo_temp > 70 && count_self2 >= TSELF && tflag2 != 1) {
-   uo_temp_fix2 = uo_temp; // забрали температуру как эталон
-   kl2_off2 = KL2_OFF;     // задали переменной значение константы для стартовой скорости отбора. константу перезаписывать нельзя
-   tflag2 = 1; // флаг выставляем в 1, чтобы больше сюда уже не попадать.  
-}
-// И дальше работаем уже после фиксации температуры
-if (mode == 4 && uo_temp > 70 && count_self2 >= TSELF && tflag2 == 1) {
-   submode = "B"; //ОТБОР ТЕЛА
-//РАБОТА КЛАПАНА ОТБОРА ЕСЛИ ТЕМПЕРАТУРА НЕ ПРЕВЫШАЕТ ФИКСИРОВАННУЮ РАНЕЕ НА ЗНАЧЕНИЕ ДЕЛЬТЫ 
-if (uo_temp < uo_temp_fix2 + DELT) {
-static uint32_t tmr_uo_body2;
-if (millis() - tmr_uo_body2 >= KL2_PER) {
-    tmr_uo_body2 = millis();
-    xflag2 = 0; // обнуляем флаг, до следующего завышения температуры    
-    digitalWrite(KL2_PIN, 1); //открыли клапан
- }
-if (millis() - tmr_uo_body2 >= kl2_off2) {  //закрыли клапан если значение времени больше времени открытия
-    digitalWrite(KL2_PIN, 0);
-}
-// КОНЕЦ РАБОТЫ КЛАПАНА ОТБОРА
-}
-// ЕСЛИ ТЕМП. ЗАСКОЧИЛА ЗА ВЕРХНИЙ ПРЕДЕЛ - СНИЖАЕМ СКОРОСТЬ ОТБОРА НА ДЕКРЕМЕНТ DECR
-if ((uo_temp >= uo_temp_fix2 + DELT) && xflag2 != 1) {
-   kl2_off2 = kl2_off2 - DECR;
-   xflag2 = 1; // выставляем флаг завышения температуры. Чтобы снижение на декремент происходило один раз и значение оставалось таким же до следующего завышения.
-   xflag_count = xflag_count + 1; //СЧИТАЕМ СКОЛЬКО РАЗ ЗАСКОЧИЛА ТЕМПЕРАТУРА
-}
-// ОСТАНАВЛИВАЕМ ПРОЦЕСС ЕСЛИ СКОРОСТЬ ОТБОРА МЕНЬШЕ МИНИМАЛЬНО ЗАДАННОЙ ВЕЛИЧИНЫ ВРЕМЕНИ ОТКРЫТИЯ КЛАПАНА
-if (kl2_off2 < 500) {
-  stop_norm();
-}
-// КОНЕЦ РАБОТЫ ПО ОТБОРУ "ТЕЛА" 2
-}
+
+//#################################################
+// РЕЖИМ АВАРИЙНОЙ РЕКТИФИКАЦИИ №2
+//
+
 
 //#################################################
 // УПРАВЛЕНИЕ ПОМПОЙ НА РАЗНЫХ РЕЖИМАХ (АСИНХРОННО)
