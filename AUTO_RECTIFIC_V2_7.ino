@@ -150,7 +150,7 @@ else {
 }// КОНЕЦ ОПРОСА ДАТЧИКОВ
 
 //########################################################
-//ВЫБОР РЕЖИМА ПО НАЖАТИЮ КНОПКИ. ОПРОС КНОПКИ РАЗ В 0.9 СЕК
+//ВЫБОР РЕЖИМА ПО НАЖАТИЮ КНОПКИ.
 static uint32_t tmr_mode;
 if (millis() - tmr_mode >= 550) {
     tmr_mode = millis();  
@@ -198,24 +198,26 @@ if (mode == 2 && cube_temp >= 75) {
     ten_pow = map(dimmer, 9000, 500, 0, 100);
     submode = "P";
  }
-// РЕЖИМЫ РЕКТИФИКАЦИИ. ПО ТЕМПЕРАТУРЕ В УЗЛЕ ОТБОРА
-if ((mode == 3 || mode == 4) && uo_temp < TUO_REF) {
+// РЕЖИМ РЕКТИФИКАЦИИ. СТАРТ РЕГУЛИРОВКИ ПО ТЕМПЕРАТУРЕ В УЗЛЕ ОТБОРА. САМА РЕГУЛИРОВКА ПО ТЕМПЕРАТУРЕ В КУБЕ. 
+// МЕНЬШЕ СПИРТА -> БОЛЬШЕ ТЕМПЕРАТУРА -> БОЛЬШЕ МОЩНОСТЬ
+if ((mode == 3) && uo_temp < TUO_REF) {
   detachInterrupt(INT_NUM);
   ten_pow = 100;
   digitalWrite(DIMMER_PIN, 1);
 }
-if ((mode == 3 || mode == 4) && uo_temp >= TUO_REF) {
+if ((mode == 3) && uo_temp >= TUO_REF) {
     attachInterrupt(INT_NUM, isr, FALLING);
-    dimmer =  map(cube_temp, 80, 98, MIN_POW, MAX_POW); // МЕНЯЕТСЯ (примерно) ОТ 55% ДО 65%
+    dimmer =  map(cube_temp, 80, 98, MIN_POW, MAX_POW);
     ten_pow = map(dimmer, 9000, 500, 0, 100);    
 }
+// РУЧНОЙ РЕЖИМ
 if (mode == 4){
   submode = "N";
   rheat = analogRead(R_HEAT);
 if (rheat < 1000 && rheat >= 100) {
   attachInterrupt(INT_NUM, isr, FALLING);
   dimmer = map(rheat, 0, 1024, 9000, 500);
-  ten_pow = map(rheat, 0, 1024, 0, 100);
+  ten_pow = map(dimmer, 9000, 500, 0, 100);
  }
 if (rheat >= 1000) {
   detachInterrupt(INT_NUM);
@@ -230,8 +232,8 @@ if (rheat < 100) {
  }
 }// КОНЕЦ УПРАВЛЕНИЯ МОЩНОСТЬЮ ТЭНа 
 
-//#########################################
-// ОСНОВНАЯ ЛОГИКА РАБОТЫ РЕЖИМ - РЕКТИФИКАЦИЯ
+//##############################################
+// ОСНОВНАЯ ЛОГИКА РАБОТЫ РЕЖИМ - "РЕКТИФИКАЦИЯ"
 // СЧЕТЧИК ВРЕМЕНИ РАБОТЫ "НА СЕБЯ"
 static uint32_t tmr_self;
 if (millis() - tmr_self >= 1000) {
@@ -246,7 +248,7 @@ if (mode == 3 && count_self < TSELF && uo_temp >= TUO_REF) {
 }
 //ЗАДАЕМ ВРЕМЯ ОТБОРА ГОЛОВ ПОТЕНЦИОМЕТРОМ УПРАВЛЕНИЯ КУЛЕРАМИ
 if (mode == 3) {
-  head_time_map = map(analogRead(R_COOL), 0, 1024, 0, 150); //(150мин) 2.5 ЧАСА МАКСИМУМ
+  head_time_map = map(analogRead(R_COOL), 0, 1024, 0, 120); // 2 ЧАСА МАКСИМУМ
   head_time = head_time_map * 60;
   head_time_disp = head_time_map;
 }
@@ -267,17 +269,15 @@ if (millis() - tmr_head >= 1000) {
     tflag = 0;     //сбрасываем флаг задания эталонной температуры      
  }
 // РАБОТА КЛАПАНА ОТБОРА
-// millis() – миллисекунды, тип unsigned long, от 1 до 4 294 967 295 мс (~50 суток), разрешение 1 мс. 
-// Так что хватит на время перегона точно без сбоев.
 static uint32_t tmr_kl1_head;
 if (millis() - tmr_kl1_head >= KL1_PER) {
     tmr_kl1_head = millis();
     digitalWrite(KL1_PIN, 1); //открыли клапан 1
-    kl1_state = ">>";         //индикация работы клапана
+    kl1_state = ">";         //индикация работы клапана
  }
-if (millis() - tmr_kl1_head >= KL1_OFF) {  //закрыли клапан если значение времени больше времени открытия KL1_OFF
+if (millis() - tmr_kl1_head >= KL1_OFF) {  //закрыли клапан 1 если значение времени больше времени открытия KL1_OFF
     digitalWrite(KL1_PIN, 0);
-    kl1_state = "--";
+    kl1_state = "-";
 }
 // так продолжаем отбирать пока значение счетчика count_head не будет >= времени THEAD
 }// КОНЕЦ РЕЖИМА ОТБОРА ГОЛОВ 
@@ -289,7 +289,7 @@ if (mode == 3 && uo_temp > TUO_REF && count_self >= TSELF && count_head >= head_
    kl2_off = KL2_OFF;              // задали переменной значение константы для стартовой скорости отбора. константу перезаписывать нельзя
    tflag = 1;                      // флаг выставляем в 1, чтобы больше сюда уже не попадать.
    digitalWrite(KL1_PIN, 0);       // перекрываем клапан отбора голов(в алгоритме работы по таймеру есть недочет - период работы клапана сильно больше счетчика режима). 
-   kl1_state = "--"; 
+   kl1_state = "-"; 
    submode = "X";
 }
 
@@ -306,12 +306,12 @@ static uint32_t tmr_kl2_body;
 if ((millis() - tmr_kl2_body >= KL2_PER) && (uo_temp < (uo_temp_fix + DELT))) {
     tmr_kl2_body = millis();
     digitalWrite(KL2_PIN, 1); //открыли клапан
-    kl2_state = ">>";
+    kl2_state = ">";
     xflag = 0;  //  сбрасываем флаг если температура пришла в норму
  }
 if (millis() - tmr_kl2_body >= kl2_off) {  //закрыли клапан если значение времени больше времени открытия
     digitalWrite(KL2_PIN, 0);
-    kl2_state = "--";
+    kl2_state = "-";
 }
 // если темпертара залезла выше uo_temp_fix + DELT, убавляем скорость отбора, ставим флаг завышения, увеличиваем счетчик завышений.
 if ((uo_temp >= (uo_temp_fix + DELT)) && !xflag) {
@@ -326,11 +326,6 @@ if (kl2_off < 60) {
 // КОНЕЦ РАБОТЫ КЛАПАНА ОТБОРА
 // КОНЕЦ РАБОТЫ ПО ОТБОРУ "ТЕЛА"
 }
-
-//#################################################
-// РЕЖИМ АВАРИЙНОЙ РЕКТИФИКАЦИИ №2
-//
-
 
 //#################################################
 // УПРАВЛЕНИЕ ПОМПОЙ НА РАЗНЫХ РЕЖИМАХ (АСИНХРОННО)
@@ -432,7 +427,6 @@ lcd.print("   ");
 lcd.setCursor(11,0);
 lcd.print(ten_pow);
 // вывод счетчика на режиме, или мощности ШИМ кулеров для POTSTILL/MANUAL
-
 if (mode == 1 || mode == 2 || mode == 4) {
 lcd.setCursor(9,1);
 lcd.print("A:");
@@ -479,7 +473,7 @@ lcd.setCursor(9,2);
 lcd.print("P:");
 lcd.setCursor(11,2);
 lcd.print(pump_state);
-//вывод состояния клапанов
+// вывод состояния клапанов
 lcd.setCursor(15,0);
 lcd.print("K1:");
 lcd.setCursor(18,0);
@@ -488,19 +482,19 @@ lcd.setCursor(15,1);
 lcd.print("K2:");
 lcd.setCursor(18,1);
 lcd.print(kl2_state);
-//счетчик завышений по температуре узла отбора
+// счетчик завышений по температуре узла отбора
 lcd.setCursor(15,2);
 lcd.print("T^:");
 lcd.setCursor(18,2);
 lcd.print(xflag_count);
-//Время отбора голов в минутах
+// Время отбора голов в минутах
 lcd.setCursor(14,3);
 lcd.print("Ht:");
 lcd.setCursor(17,3);
 lcd.print("   ");
 lcd.setCursor(17,3);
 lcd.print(head_time_disp);
-//Подрежим
+// Подрежим
 lcd.setCursor(12,3);
 lcd.print(submode);
 // КОНЕЦ ВЫВОДА НА ДИСПЛЕЙ ПО ТАЙМЕРУ
@@ -526,29 +520,31 @@ ISR(TIMER2_A) {
 void stop_norm() {
 lcd.clear();
 while (true) {
-    lcd.setCursor(0,1);
-    lcd.print("NORMAL STOP");
+    lcd.setCursor(0,3);
+    lcd.print("# NORMAL STOP #");
     detachInterrupt(INT_NUM);    // отцепляем прерывание
     digitalWrite(DIMMER_PIN, 0); // выключаем тиристор принудительно
     digitalWrite(PUMP_PIN, 0);   // выключаем помпу
     analogWrite(PWM_PIN, 0);     // выставляем минимум на кулеры
     digitalWrite(KL1_PIN, 0);    // закрываем клапан 1
     digitalWrite(KL2_PIN, 0);    // закрываем клапан 2
-    delay(1000);                 // повторяем бесконечно, раз в секунду
+    disp_stats();
+    delay(1000);                // повторяем бесконечно, раз в секунду
   }
 }
 //АВАРИЙНЫЙ СТОП ПО ВОДЕ
 void stop_water() {
 lcd.clear();
 while (true) {
-    lcd.setCursor(0,1);
-    lcd.print("ERR:WATER OVRHEAT");
+    lcd.setCursor(0,3);
+    lcd.print("# ERR WATER #");
     detachInterrupt(INT_NUM);
     digitalWrite(DIMMER_PIN, 0);  //отцепляем прерывание
     digitalWrite(PUMP_PIN, 0);    //выключаем помпу
     analogWrite(PWM_PIN, 0);      //выставляем минимум на кулеры
     digitalWrite(KL1_PIN, 0);     //закрываем клапан 1
     digitalWrite(KL2_PIN, 0);     //закрываем клапан 2
+    disp_stats();
     delay(1000);                  //повторяем бесконечно, раз в секунду
   }
 }
@@ -556,14 +552,46 @@ while (true) {
 void stop_cube() {
 lcd.clear();
 while (true) {
-    lcd.setCursor(0,1);
-    lcd.print("ERR:CUBE OVRHEAT");
+    lcd.setCursor(0,3);
+    lcd.print("# ERR CUBE #");
     detachInterrupt(INT_NUM);
     digitalWrite(DIMMER_PIN, 0);  //отцепляем прерывание
     digitalWrite(PUMP_PIN, 0);    //выключаем помпу
     analogWrite(PWM_PIN, 0);      //выставляем минимум на кулеры
     digitalWrite(KL1_PIN, 0);     //закрываем клапан 1
     digitalWrite(KL2_PIN, 0);     //закрываем клапан 2
+    disp_stats();
     delay(1000);                  //повторяем бесконечно, раз в секунду
   }
+}
+//вывод отчета
+void disp_stats() {
+///выводим на экран отчет с температурами, временем и т.д.
+//температуры
+lcd.setCursor(0,0);
+lcd.print("Tk:")
+lcd.setCursor(3,0);
+lcd.print(cube_temp)
+lcd.setCursor(0,1);
+lcd.print("Tw:")
+lcd.setCursor(3,1);
+lcd.print(water_temp)
+lcd.setCursor(0,2);
+lcd.print("To:")
+lcd.setCursor(3,2);
+lcd.print(water_temp);
+///счетчики
+lcd.setCursor(9,0);
+lcd.print("Hc:");
+lcd.setCursor(12,0);
+lcd.print(count_head);
+lcd.setCursor(9,1);
+lcd.print("Bc:");
+lcd.setCursor(12,1);
+lcd.print(count_body);
+// зафиксированная в УО температура
+lcd.setCursor(9,2);
+lcd.print("Tf:");
+lcd.setCursor(12,2);
+lcd.print(uo_temp_fix);
 }
