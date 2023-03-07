@@ -1,34 +1,36 @@
 #include <LiquidCrystal_I2C.h>   //БИБЛИОТЕКА LCD ДИСПЛЕЯ
 #include <GyverTimers.h>         //ТАЙМЕРЫ
 #include <microDS18B20.h>        //ТЕМПЕРАТУРА DS18B20
+//ПРЕРЫВАНИЯ
+#define INT_NUM 0      // НОМЕР ПРЕРЫВАНИЯ ДЕТЕКТОРА НУЛЯ
 //ПИНЫ
 #define ZERO_PIN 2     // ПИН ДЕТЕКТОРА НУЛЯ
-#define INT_NUM 0      // НОМЕР ПРЕРЫВАНИЯ ДЕТЕКТОРА НУЛЯ
 #define DIMMER_PIN 3   // УПРАВЛЕНИЕ СИМИСТОРА
 #define R_HEAT A6      // МОЩНОСТЬ НАГРЕВА
 #define R_COOL A7      // СКОРОСТЬ КУЛЕРОВ
 #define BTN_PIN 7      // КНОПКА
-#define PWM_PIN 6      // ШИМ КУЛЕРОВ
-#define PUMP_PIN 10    // MOSFET ПОМПА
-#define KL1_PIN 8      // КЛАПАН_ГОЛОВЫ
-#define KL2_PIN 12     // КЛАПАН_ТЕЛО
-#define TC_PIN 4       // ТЕМПЕРАТУРА КУБ
-#define TW_PIN 5       // ТЕМПЕРАТУРА ВОДА
-#define TUO_PIN 9      // ТЕМПЕРАТУРА УЗЕЛ ОТБОРА
+#define PWM_PIN 6      // ВЫХОД ДЛЯ ШИМ КУЛЕРОВ
+#define PUMP_PIN 10    // MOSFET ПОМПЫ
+#define KL1_PIN 8      // MOSFET КЛАПАН ОТБОРА "ГОЛОВ"
+#define KL2_PIN 12     // MOSFET КЛАПАН ОТБОРА "ТЕЛА"
+#define TC_PIN 4       // ДАТЧИК ТЕМПЕРАТУРЫ КУБ
+#define TW_PIN 5       // ДАТЧИК ТЕМПЕРАТУРЫ ВОДА
+#define TUO_PIN 9      // ДАТЧИК ТЕМПЕРАТУРЫ УЗЕЛ ОТБОРА
 //КОНСТАНТЫ РЕЖИМОВ
 #define STOP_M1 98     // ТЕМПЕРАТУРА ОСТАНОВКИ РЕЖИМА P1(первый перегон)
 #define STOP_M2 96     // ТЕМПЕРАТУРА ОСТАНОВКИ РЕЖИМА P2(второй перегон)
-#define FAIL_STOP_C 98.60 // ТЕМПЕРАТУРА АВАРИЙНОЙ ОСТАНОВКИ(КУБ)
+#define FAIL_STOP_C 98.50 // ТЕМПЕРАТУРА АВАРИЙНОЙ ОСТАНОВКИ(КУБ)
 #define FAIL_STOP_W 45 // ТЕМПЕРАТУРА АВАРИЙНОЙ ОСТАНОВКИ(ВОДА)
 #define P_START_UO 45  // ТЕМПЕРАТУРА ВКЛ ПОМПЫ ПО УЗЛУ ОТБОРА 
 #define P_START_C  65  // ТЕМПЕРАТУРА ВКЛ ПОМПЫ ПО КУБУ
 #define TUO_REF 70     // НИЖНЯЯ ГРАНИЧНАЯ ТЕМПЕРАТУРА УЗЛА ОТБОРА ДЛЯ РЕЖИМОВ
-#define MIN_POW 5800   // мощность начала процесса
-#define MAX_POW 4800   // мощность в конце процесса 
+#define MIN_POW 5800   // МОЩНОСТЬ ТЭН В НАЧАЛЕ РЕКТИФИКАЦИИ 
+#define MAX_POW 4800   // МОЩНОСТЬ ТЭН В КОНЦЕ РЕКТИФИКАЦИИ
+//Мощность задается в микросекндах от начала полуволны. Вся полуволна 10000 мкс (50Гц сеть), рабочий диапазон 9000 -> 500. 500 - маскимум мощности, 9000 - минимум.
 //ТАЙМЕРЫ КЛАПАНОВ(СКОРОСТЬ ОТБОРА)
 #define KL1_PER 20000  // ПЕРИОД ВКЛЮЧЕНИЯ КЛАПАНА ОТБОРА ГОЛОВ (millis)
 #define KL2_PER 15000  // ПЕРИОД ВКЛЮЧЕНИЯ КЛАПАНА ОТБОРА ТЕЛА (millis)
-#define KL1_OFF 200    // ВРЕМЯ РАБОТЫ КЛАПАНА ОТБОРА ГОЛОВ (millis) 10c/200ms примерно 400мл/час
+#define KL1_OFF 200    // ВРЕМЯ РАБОТЫ КЛАПАНА ОТБОРА ГОЛОВ (millis)
 #define KL2_OFF 300    // ВРЕМЯ РАБОТЫ КЛАПАНА ОТБОРА ТЕЛА (millis)
 //СЧЕТЧИКИ ВРЕМЕНИ
 #define TSELF 600      // ВРЕМЯ РАБОТЫ КОЛОННЫ НА СЕБЯ (sec) ~10 мин
@@ -41,7 +43,6 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);
 MicroDS18B20<TC_PIN> sensor_cube;
 MicroDS18B20<TW_PIN> sensor_water;
 MicroDS18B20<TUO_PIN> sensor_out;
-
 //ОПРЕДЕЛЯЕМ ПЕРЕМЕННЫЕ
 float cube_temp;        // ТЕМП. В КУБЕ (идет на дисплей)
 float water_temp;       // ТЕМП. ВОДЫ В ОХЛАЖДЕНИИ (идет на дисплей)
@@ -457,7 +458,7 @@ lcd.print(cnt_self);
 }
 if (mode ==3 && submode == "H") {
 lcd.setCursor(9,1);
-lcd.print("S:");
+lcd.print("H:");
 lcd.setCursor(11,1);
 lcd.print("   ");
 lcd.setCursor(11,1);
@@ -466,7 +467,7 @@ lcd.print(cnt_head);
 }
 if (mode ==3 && submode == "B") {
 lcd.setCursor(9,1);
-lcd.print("S:");
+lcd.print("B:");
 lcd.setCursor(11,1);
 lcd.print("   ");
 lcd.setCursor(11,1);
